@@ -9,6 +9,7 @@ import {
 import bs58 from 'bs58';
 import { connection } from '../config/solana.js';
 import { txToBase58 } from '../utils/encoders.js';
+import {txToBase64} from "../utils/tx.js";
 
 export async function buildSignedTransferSplBase58({
                                                        creatorPrivateKeyBase58,
@@ -42,5 +43,5 @@ export async function buildSignedTransferSplBase58({
     const tx = new VersionedTransaction(msg);
     tx.sign([creator]);
 
-    return { base58: txToBase58(tx), buyerAta: buyerAta.toBase58() };
+    return { base58: txToBase58(tx), buyerAta: buyerAta.toBase58(), base64: txToBase64(tx), };
 }

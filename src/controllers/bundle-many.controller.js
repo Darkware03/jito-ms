@@ -5,8 +5,16 @@ import { buildSignedCreateMintTxBase58 } from "../services/spl-create.service.js
 import { buildSignedTransferSplBase58 } from "../services/spl-transfer.service.js";
 import { buildSignedTransferSolBase58 } from "../services/sol-transfer.service.js";
 import { buildSignedTipBase58 } from "../services/txbuild.service.js"; // o tip.service.js
-import { simulateBundle, sendBundle } from "../services/jito.service.js";
+import {simulateBundle, sendBundle, getBundleStatuses} from "../services/jito.service.js";
+import {connection} from "../config/solana.js";
 
+async function assertHasLamports(pkBase58, requiredLamports, label) {
+    const pub = Keypair.fromSecretKey(bs58.decode(pkBase58)).publicKey;
+    const bal = await connection.getBalance(pub, 'finalized');
+    if (bal < requiredLamports) {
+        throw new Error(`${label} sin SOL suficiente: tiene ${bal}, requiere >= ${requiredLamports}`);
+    }
+}
 /**
  * Body esperado:
  * {
@@ -43,7 +51,6 @@ export async function bundleCreateAndSellMany(req, res, next) {
         if (!Array.isArray(buyers) || buyers.length === 0) {
             return res.status(400).json({ ok:false, error: "buyers[] es requerido con al menos 1 elemento" });
         }
-        console.log(process.env.RPC_URL)
         // Validaciones y derivaciones
         const creator = Keypair.fromSecretKey(bs58.decode(creatorPrivateKeyBase58));
         const creatorPubkey = creator.publicKey.toBase58();
@@ -92,14 +99,30 @@ export async function bundleCreateAndSellMany(req, res, next) {
         const tipPk1 = tipPayerPrivateKeyBase58 || b0.buyerPrivateKeyBase58 || creatorPrivateKeyBase58;
         const txTip1 = await buildSignedTipBase58({ payerPrivateKeyBase58: tipPk1, lamports: Number(tipLamports) });
 
-        const bundle1 = [txCreate.base58, txSpl0.base58, txPay0.base58, txTip1.base58];
+        await assertHasLamports(creatorPrivateKeyBase58, /* p.ej */ 200_000, 'Creator');
+        await assertHasLamports(b0.buyerPrivateKeyBase58, Number(b0.paymentLamports) + 10_000, 'Buyer0');
+        await assertHasLamports(tipPk1, Number(tipLamports) + 5_000, 'TIP payer');
+
+        const bundle1 = [
+            txCreate.base64,
+            txSpl0.base64,
+            txPay0.base64,
+            txTip1.base64
+        ];
 
         const sim1 = await simulateBundle(bundle1);
         if (simulateOnly) {
             results.push({ stage: "bundle1", simulate: sim1 });
         } else {
             const id1 = await sendBundle(bundle1);
-            results.push({ stage: "bundle1", bundleId: id1, simulate: sim1 });
+           // poll simple (500-1000ms)
+            for (let i = 0; i < 30; i++) {
+                const st = await getBundleStatuses([id1]);
+                const s = st?.[0]?.status; // 'Landed' | 'Pending' | 'Dropped' | ...
+                if (s === 'Landed') break;
+                if (s === 'Dropped') throw new Error(`Bundle1 dropped`);
+                await new Promise(r => setTimeout(r, 1000));
+            }
         }
 
         // ---------- BUNDLES 2..N: agrupar compradores restantes de a 1 o 2 por bundle
@@ -130,13 +153,13 @@ export async function bundleCreateAndSellMany(req, res, next) {
                     lamports: Number(buyerOrder.paymentLamports)
                 });
 
-                txs.push(txSpl.base58, txPay.base58);
+                txs.push(txSpl.base64, txPay.base64);
             }
 
             // TIP al final
             const tipPkN = tipPayerPrivateKeyBase58 || chunk[0].buyerPrivateKeyBase58 || creatorPrivateKeyBase58;
             const txTipN = await buildSignedTipBase58({ payerPrivateKeyBase58: tipPkN, lamports: Number(tipLamports) });
-            txs.push(txTipN.base58);
+            txs.push(txTipN.base64);
 
             // Simular y/o enviar
             const simN = await simulateBundle(txs);

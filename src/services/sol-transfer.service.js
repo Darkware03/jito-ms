@@ -3,6 +3,7 @@ import { Keypair, VersionedTransaction, TransactionMessage, SystemProgram, Publi
 import bs58 from 'bs58';
 import { connection } from '../config/solana.js';
 import { txToBase58 } from '../utils/encoders.js';
+import {txToBase64} from "../utils/tx.js";
 
 export async function buildSignedTransferSolBase58({
                                                        buyerPrivateKeyBase58,
@@ -20,5 +21,4 @@ export async function buildSignedTransferSolBase58({
 
     const tx = new VersionedTransaction(msg);
     tx.sign([buyer]);
-    return { base58: txToBase58(tx) };
-}
+    return { base58: txToBase58(tx), base64: txToBase64(tx) };}

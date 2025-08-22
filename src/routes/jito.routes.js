@@ -10,6 +10,7 @@ import {
 } from "../controllers/spl.controller.js";
 import {bundleCreateAndSell} from "../controllers/bundle.controller.js";
 import {bundleCreateAndSellMany} from "../controllers/bundle-many.controller.js";
+import {bundleSellMany} from "../controllers/sell-many.controller.js";
 
 const r = Router();
 
@@ -32,5 +33,5 @@ r.post("/status/final", statusFinal);
 // 🚀 EP “todo en uno”: crear y vender en el mismo bloque
 r.post("/bundle-create-and-sell", bundleCreateAndSell); // 👈
 r.post("/bundle-create-and-sell-many", bundleCreateAndSellMany);
-
+r.post("/bundle-sell-many", bundleSellMany)
 export default r;

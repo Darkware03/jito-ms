@@ -18,6 +18,7 @@ const TOKEN_METADATA_PROGRAM_ID = PKG_PROGRAM_ID
 import bs58 from 'bs58';
 import { connection } from '../config/solana.js';
 import { txToBase58 } from '../utils/encoders.js';
+import {txToBase64} from "../utils/tx.js";
 
 export async function buildSignedCreateMintTxBase58({
                                                         creatorPrivateKeyBase58,
@@ -108,6 +109,7 @@ export async function buildSignedCreateMintTxBase58({
 
     return {
         base58: txToBase58(tx),
+        base64: txToBase64(tx),
         mint: mint.publicKey.toBase58(),
         creatorAta: creatorAta.toBase58()
     };
