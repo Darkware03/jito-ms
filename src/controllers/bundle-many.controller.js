@@ -181,3 +181,156 @@ export async function bundleCreateAndSellMany(req, res, next) {
         return next(err);
     }
 }
+
+export async function bundleCreateAndSellManyWithParams(params) {
+    try {
+        const {
+            creatorPrivateKeyBase58,
+            decimals = 6,
+            initialSupply = 1_000_000,
+            name, symbol, uri,
+            buyers = [],
+            tipLamports = 2000,
+            tipPayerPrivateKeyBase58,
+            simulateOnly = false
+        } = params;
+
+        if (!creatorPrivateKeyBase58) {
+            return { ok: false, error: "El campo 'creatorPrivateKeyBase58' es requerido." };
+        }
+        if (!name || !symbol) {
+            return { ok: false, error: "Los campos 'name' y 'symbol' son requeridos." };
+        }
+        if (!Array.isArray(buyers) || buyers.length === 0) {
+            return { ok: false, error: "El arreglo 'buyers' debe contener al menos un comprador." };
+        }
+
+        const creator = Keypair.fromSecretKey(bs58.decode(creatorPrivateKeyBase58));
+        const creatorPubkey = creator.publicKey.toBase58();
+
+        const totalTokens = buyers.reduce((acc, b) => acc + Number(b.tokenAmount || 0), 0);
+        if (totalTokens > Number(initialSupply)) {
+            return { ok: false, error: "La suma de 'tokenAmount' en los compradores excede el 'initialSupply'." };
+        }
+
+        const results = [];
+        let mintAddress = null;
+
+        // BUNDLE 1: Create Mint + Transfer + Payment + Tip
+        const b0 = buyers[0];
+        if (!b0?.buyerPrivateKeyBase58 || b0?.tokenAmount == null || b0?.paymentLamports == null) {
+            return {
+                ok: false,
+                error: "El primer comprador debe tener los campos 'buyerPrivateKeyBase58', 'tokenAmount' y 'paymentLamports'."
+            };
+        }
+
+        const buyer0 = Keypair.fromSecretKey(bs58.decode(b0.buyerPrivateKeyBase58));
+        const buyer0Pub = buyer0.publicKey.toBase58();
+
+        const txCreate = await buildSignedCreateMintTxBase58({
+            creatorPrivateKeyBase58,
+            decimals,
+            initialSupply: BigInt(initialSupply),
+            name, symbol, uri
+        });
+        mintAddress = txCreate.mint;
+
+        const txSpl0 = await buildSignedTransferSplBase58({
+            creatorPrivateKeyBase58,
+            mintAddress,
+            buyerPubkey: buyer0Pub,
+            amount: Number(b0.tokenAmount)
+        });
+
+        const txPay0 = await buildSignedTransferSolBase58({
+            buyerPrivateKeyBase58: b0.buyerPrivateKeyBase58,
+            toPubkey: creatorPubkey,
+            lamports: Number(b0.paymentLamports)
+        });
+
+        const tipPk1 = tipPayerPrivateKeyBase58 || b0.buyerPrivateKeyBase58 || creatorPrivateKeyBase58;
+        const txTip1 = await buildSignedTipBase58({ payerPrivateKeyBase58: tipPk1, lamports: Number(tipLamports) });
+
+        await assertHasLamports(creatorPrivateKeyBase58, 200_000, 'Creator');
+        await assertHasLamports(b0.buyerPrivateKeyBase58, Number(b0.paymentLamports) + 10_000, 'Buyer0');
+        await assertHasLamports(tipPk1, Number(tipLamports) + 5_000, 'TIP payer');
+
+        const bundle1 = [txCreate.base64, txSpl0.base64, txPay0.base64, txTip1.base64];
+        const sim1 = await simulateBundle(bundle1);
+
+        if (simulateOnly) {
+            results.push({ stage: "bundle1", simulate: sim1 });
+        } else {
+            const id1 = await sendBundle(bundle1);
+            results.push({ stage: "bundle1", bundleId: id1, simulate: sim1 });
+
+            for (let i = 0; i < 30; i++) {
+                const st = await getBundleStatuses([id1]);
+                const status = st?.[0]?.status;
+                if (status === 'Landed') break;
+                if (status === 'Dropped') return { ok: false, error: "El bundle1 fue descartado por la red." };
+                await new Promise(r => setTimeout(r, 1000));
+            }
+        }
+
+        // BUNDLES 2..N
+        const rest = buyers.slice(1);
+        for (let i = 0; i < rest.length; i += 2) {
+            const chunk = rest.slice(i, i + 2);
+            const txs = [];
+
+            for (const buyer of chunk) {
+                if (!buyer?.buyerPrivateKeyBase58 || buyer?.tokenAmount == null || buyer?.paymentLamports == null) {
+                    return {
+                        ok: false,
+                        error: `Comprador en posición ${i + 1} inválido: faltan campos obligatorios.`
+                    };
+                }
+
+                const kp = Keypair.fromSecretKey(bs58.decode(buyer.buyerPrivateKeyBase58));
+                const pub = kp.publicKey.toBase58();
+
+                const txSpl = await buildSignedTransferSplBase58({
+                    creatorPrivateKeyBase58,
+                    mintAddress,
+                    buyerPubkey: pub,
+                    amount: Number(buyer.tokenAmount)
+                });
+
+                const txPay = await buildSignedTransferSolBase58({
+                    buyerPrivateKeyBase58: buyer.buyerPrivateKeyBase58,
+                    toPubkey: creatorPubkey,
+                    lamports: Number(buyer.paymentLamports)
+                });
+
+                txs.push(txSpl.base64, txPay.base64);
+            }
+
+            const tipPkN = tipPayerPrivateKeyBase58 || chunk[0].buyerPrivateKeyBase58 || creatorPrivateKeyBase58;
+            const txTipN = await buildSignedTipBase58({ payerPrivateKeyBase58: tipPkN, lamports: Number(tipLamports) });
+            txs.push(txTipN.base64);
+
+            const simN = await simulateBundle(txs);
+            if (simulateOnly) {
+                results.push({ stage: `bundle${2 + Math.floor(i / 2)}`, simulate: simN });
+            } else {
+                const idN = await sendBundle(txs);
+                results.push({ stage: `bundle${2 + Math.floor(i / 2)}`, bundleId: idN, simulate: simN });
+            }
+        }
+
+        return {
+            ok: true,
+            mint: mintAddress,
+            bundles: results
+        };
+
+    } catch (err) {
+        console.error("❌ Error en bundleCreateAndSellManyWithParams:", err);
+        return {
+            ok: false,
+            error: err.message || 'Error inesperado al procesar el bundle.'
+        };
+    }
+}
