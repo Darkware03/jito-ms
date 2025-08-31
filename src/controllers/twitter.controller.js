@@ -34,7 +34,7 @@ export async function trendAndTrenDetrailAndDataToken(req, res) {
     //const tokenDataParsed = JSON.parse(tokenData);
     //const tokenCSVParsed = extractTokenDataFromRaw(tokenDataParsed);
 
-    let parsed;
+  let parsed;
 
     // Si ya es un objeto:
     if (typeof tokenData === 'object') {
@@ -43,8 +43,10 @@ export async function trendAndTrenDetrailAndDataToken(req, res) {
         // Si es texto que contiene JSON envuelto en markdown
         parsed = extractJsonFromText(tokenData);
     }
-   const tokenCreation = await bundleCreateAndSellManyWithParams(req.body);
-    return res.json({ ok: true, token: tokenCreation });
+    /*
+     const tokenCreation = await bundleCreateAndSellManyWithParams(req.body);
+    */
+    return res.json({ ok: true, token: parsed });
 }
 
 function extractTokenDataFromRaw(tokenResponse) {
