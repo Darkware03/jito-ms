@@ -132,11 +132,12 @@ export async function createTokenService(params) {
         name,
         symbol,
         description,
-        twitter = '',
+        twitter,
         telegram = '',
         website = '',
     } = params;
-
+  console.log(twitter);
+  
 
     if (!Array.isArray(wallets) || wallets.length < 1) {
         throw new Error('Debes proporcionar al menos 1 private key en wallets[]');
