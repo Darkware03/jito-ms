@@ -18,7 +18,7 @@ export async function memecoinWorker() {
         return;
         }
         // 2️⃣ Obtener trending topics
-        const trends = await getTrendingTopics(1);
+        const trends = await getTrendingTopics(process.env.WOEID);
         const trendsDetail = await getTrendDetails(trends[0].trend_name);
         const topicChoose = trendsDetail[0].text;
 
