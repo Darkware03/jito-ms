@@ -102,3 +102,30 @@ export async function getRandomTweetFromUsers() {
     const random = allTweets[Math.floor(Math.random() * allTweets.length)];
     return { success: true, tweet: random };
 }
+
+
+import { TwitterApi } from 'twitter-api-v2';
+import dotenv from 'dotenv';
+dotenv.config();
+
+const client = new TwitterApi({
+    appKey: process.env.TWITTER_API_KEY,
+    appSecret: process.env.TWITTER_API_SECRET,
+    accessToken: process.env.TWITTER_ACCESS_TOKEN,
+    accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET,
+});
+
+const userClient = client.readWrite;
+
+export async function getHomeTimeline() {
+    try {
+        const timeline = await userClient.v2.homeTimeline({
+            max_results: 2,
+        });
+        console.log(timeline.data.data)
+        return timeline.data;
+    } catch (err) {
+        console.error('❌ Error obteniendo timeline:', err?.data || err);
+        return { error: true, message: err.message };
+    }
+}
