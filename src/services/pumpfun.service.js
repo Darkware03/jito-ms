@@ -361,7 +361,11 @@ export async function sellTokenBundleService(params) {
                     continue;
                 }
 
-                finalAmount = Math.floor((balance * entry.percent) / 100);
+                if (entry.percent >= 100) {
+                    finalAmount = balance - 1; // deja 1 token
+                } else {
+                    finalAmount = Math.floor((balance * entry.percent) / 100);
+                }
                 console.log(`✅ Wallet ${entry.keypair.publicKey.toBase58()} balance=${balance}, percent=${entry.percent}%, sell=${finalAmount}`);
             } catch (e) {
                 console.warn(`⚠️ Error leyendo balance de ${entry.keypair.publicKey.toBase58()}: ${e.message}`);
@@ -387,7 +391,7 @@ export async function sellTokenBundleService(params) {
         action: 'sell',
         mint,
         denominatedInSol,
-        amount: entry.amount,
+        amount: '100%',
         slippage,
         priorityFee: i === 0 ? priorityFeeFirst : priorityFeeOthers,
         pool,
