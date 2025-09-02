@@ -61,6 +61,7 @@ export async function memecoinWorker() {
             description: result.data.name,
             priorityFeeCreate,
             priorityFeeOthers,
+            twitter:`${process.env.TWITTER_BASE_URL}/${topicChoose.id}`
         });
 
         // 6️⃣ Guardar en DB

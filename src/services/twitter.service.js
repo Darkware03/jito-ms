@@ -1,7 +1,8 @@
 import fetch from 'node-fetch';
 
-const BEARER_TOKEN = process.env.TWITTER_BEARER_TOKEN;
 const WOEID = 23424807;
+const BEARER_TOKEN = process.env.TWITTER_BEARER_TOKEN;
+const USERNAMES = (process.env.TWITTER_USER_TO_LISTEN || "").split(',').map(u => u.trim());
 
 export async function getTrendingTopics(woeid,maxTrends=50) {
     const url = `https://api.x.com/2/trends/by/woeid/${woeid}?max_trends=${maxTrends}`;
@@ -37,4 +38,67 @@ export async function getTrendDetails(trendName) {
     const data = await res.json();
     if (data.errors) throw new Error(`Twitter API error: ${data.errors[0]?.message || 'Unknown error'}`);
     return data.data;
+}
+
+async function getUserId(username) {
+    const url = `https://api.twitter.com/2/users/by/username/${username}`;
+    const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+            Authorization: `Bearer ${BEARER_TOKEN}`,
+            'Content-Type': 'application/json',
+        },
+    });
+
+    const data = await res.json();
+    if (data.errors) {
+        console.error(`❌ Error al obtener ID de ${username}:`, data.errors[0]?.detail || 'Desconocido');
+        return null;
+    }
+
+    return data.data.id;
+}
+
+async function getLatestTweets(userId, username) {
+    const url = `https://api.twitter.com/2/users/${userId}/tweets?max_results=5&tweet.fields=created_at,public_metrics`;
+    const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+            Authorization: `Bearer ${BEARER_TOKEN}`,
+            'Content-Type': 'application/json',
+        },
+    });
+    const data = await res.json();
+    if (data.errors) {
+        console.error(`❌ Error al obtener tweets de ${username}:`, data.errors[0]?.detail || 'Desconocido');
+        return [];
+    }
+
+    return (data.data || []).map(tweet => ({
+        id: tweet.id,
+        text: tweet.text,
+        created_at: tweet.created_at,
+        like_count: tweet.public_metrics?.like_count,
+        retweet_count: tweet.public_metrics?.retweet_count,
+        username,
+    }));
+}
+
+export async function getRandomTweetFromUsers() {
+    let allTweets = [];
+
+    for (const username of USERNAMES) {
+        const userId = await getUserId(username);
+        if (!userId) continue;
+
+        const tweets = await getLatestTweets(userId, username);
+        allTweets.push(...tweets);
+    }
+
+    if (allTweets.length === 0) {
+        return { error: true, message: "No se encontraron tweets de los usuarios configurados." };
+    }
+
+    const random = allTweets[Math.floor(Math.random() * allTweets.length)];
+    return { success: true, tweet: random };
 }
