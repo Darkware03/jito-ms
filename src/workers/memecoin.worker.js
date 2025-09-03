@@ -19,8 +19,24 @@ export async function memecoinWorker() {
         }
         // 2️⃣ Obtener trending topics
         const trends = await getTrendingTopics(process.env.WOEID);
-        const trendsDetail = await getTrendDetails(trends[0].trend_name);
-        const topicChoose = trendsDetail[0].text;
+        let trendsDetail = null;
+        let topicChoose = null;
+
+        for (const trend of trends) {
+            try {
+                if (trend.trend_name.startsWith('$')) continue; // ⚠️ Saltar cashtags
+                trendsDetail = await getTrendDetails(trend.trend_name);
+                topicChoose = trendsDetail[0].text;
+                break;
+            } catch (err) {
+                console.warn(`⚠️ No se pudo procesar trending "${trend.trend_name}": ${err.message}`);
+            }
+        }
+
+        if (!trendsDetail || !topicChoose) {
+            console.log("❌ No se encontró un trending válido para crear token.");
+            return;
+        }
 
         // 3️⃣ Llamar gmgn para icon
         const result = await runCurl({

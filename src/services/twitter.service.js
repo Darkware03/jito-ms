@@ -27,7 +27,13 @@ export async function getTrendingTopics(woeid,maxTrends=50) {
 }
 
 export async function getTrendDetails(trendName) {
+    // 🔒 Evitar operadores no permitidos en el plan Basic
+    if (trendName.startsWith('$')) {
+        throw new Error(`El trending "${trendName}" contiene un operador no permitido ($cashtag) en tu plan.`);
+    }
+
     const url = `https://api.x.com/2/tweets/search/recent?query=${encodeURIComponent(trendName)}&max_results=10`;
+
     const res = await fetch(url, {
         method: 'GET',
         headers: {
@@ -35,10 +41,12 @@ export async function getTrendDetails(trendName) {
             'Content-Type': 'application/json',
         },
     });
+
     const data = await res.json();
     if (data.errors) throw new Error(`Twitter API error: ${data.errors[0]?.message || 'Unknown error'}`);
     return data.data;
 }
+
 
 async function getUserId(username) {
     const url = `https://api.twitter.com/2/users/by/username/${username}`;
